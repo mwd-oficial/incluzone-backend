@@ -237,35 +237,6 @@ class _LoginScreenState extends State<LoginScreen> {
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
-                ElevatedButton.icon(
-                  icon: Image.asset(
-                    'assets/images/google_logo.webp',
-                    width: 24,
-                    height: 24,
-                  ),
-                  label: const Text("Continuar com Google"),
-                  onPressed: () async {
-                    await Supabase.instance.client.auth.signInWithOAuth(
-                      OAuthProvider.google,
-                      redirectTo: 'io.supabase.flutter://login-callback',
-                    );
-                  },
-                ),
-
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Row(
-                    children: const [
-                      Expanded(child: Divider()),
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8),
-                        child: Text("ou", style: TextStyle(color: Colors.grey)),
-                      ),
-                      Expanded(child: Divider()),
-                    ],
-                  ),
-                ),
-
                 TextField(
                   controller: email,
                   keyboardType: TextInputType.emailAddress,
@@ -322,8 +293,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
 
-                const SizedBox(height: 20),
-
                 ElevatedButton(
                   onPressed: _fazerLogin,
                   child: const Text("Entrar"),
@@ -350,6 +319,35 @@ class _LoginScreenState extends State<LoginScreen> {
                       ],
                     ),
                   ),
+                ),
+
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Row(
+                    children: const [
+                      Expanded(child: Divider()),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8),
+                        child: Text("ou", style: TextStyle(color: Colors.grey)),
+                      ),
+                      Expanded(child: Divider()),
+                    ],
+                  ),
+                ),
+
+                ElevatedButton.icon(
+                  icon: Image.asset(
+                    'assets/images/google_logo.webp',
+                    width: 24,
+                    height: 24,
+                  ),
+                  label: const Text("Continuar com Google"),
+                  onPressed: () async {
+                    await Supabase.instance.client.auth.signInWithOAuth(
+                      OAuthProvider.google,
+                      redirectTo: 'io.supabase.flutter://login-callback',
+                    );
+                  },
                 ),
               ],
             ),

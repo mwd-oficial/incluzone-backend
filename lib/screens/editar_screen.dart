@@ -6,6 +6,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'dart:io';
 import 'dart:async';
 import '../main.dart';
+import 'package:image_picker/image_picker.dart';
 
 class EditarScreen extends StatefulWidget {
   const EditarScreen({super.key});
@@ -19,11 +20,15 @@ class _EditarScreenState extends State<EditarScreen> {
   final email = TextEditingController();
   final senha = TextEditingController();
   final confirmarSenha = TextEditingController();
+  final SupabaseService _supabaseService = SupabaseService();
   Timer? _timer;
   int _segundosRestantes = 0;
   bool _emailAlteradoPendente = false;
   String _ultimoEmailTentaAlterar = "";
   bool _carregando = false;
+  File? _imagemSelecionada;
+  String? _urlImagemExistente;
+  final ImagePicker _picker = ImagePicker();
   late final StreamSubscription<AuthState> _authSubscription;
 
   bool _senhaVisivel = false;
@@ -82,6 +87,19 @@ class _EditarScreenState extends State<EditarScreen> {
     myAppKey.currentState?.atualizarEscala(_nivelZoom);
   }
 
+  Future<void> _selecionarImagem() async {
+    final XFile? imagem = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 70, // Compacta um pouco para não pesar no Supabase
+    );
+
+    if (imagem != null) {
+      setState(() {
+        _imagemSelecionada = File(imagem.path);
+      });
+    }
+  }
+
   Future<void> _carregarConfiguracoesIniciais() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -93,27 +111,29 @@ class _EditarScreenState extends State<EditarScreen> {
     setState(() => _carregando = true);
 
     try {
-      // Força a busca dos dados mais recentes do servidor
       final response = await Supabase.instance.client.auth.getUser();
       final user = response.user;
 
       if (user != null) {
-        nome.text = user.userMetadata?['name'] ?? '';
-        email.text = user.email ?? '';
+        setState(() {
+          nome.text = user.userMetadata?['name'] ?? '';
+          email.text = user.email ?? '';
+          _urlImagemExistente = user.userMetadata?['avatar_url'];
 
-        // Se o email carregado for o novo, podemos resetar o estado pendente
-        if (_emailAlteradoPendente && user.email == _ultimoEmailTentaAlterar) {
-          setState(() {
+          if (_emailAlteradoPendente &&
+              user.email == _ultimoEmailTentaAlterar) {
             _emailAlteradoPendente = false;
-          });
-        }
+          }
+        });
       }
     } catch (e) {
-      // Se der erro (ex: sessão expirada), o currentUser ainda serve como fallback
       final user = Supabase.instance.client.auth.currentUser;
       if (user != null) {
-        nome.text = user.userMetadata?['name'] ?? '';
-        email.text = user.email ?? '';
+        setState(() {
+          nome.text = user.userMetadata?['name'] ?? '';
+          email.text = user.email ?? '';
+          _urlImagemExistente = user.userMetadata?['avatar_url'];
+        });
       }
     } finally {
       if (mounted) setState(() => _carregando = false);
@@ -246,16 +266,29 @@ class _EditarScreenState extends State<EditarScreen> {
     setState(() => _carregando = true);
 
     try {
+      String? novaUrlAvatar = _urlImagemExistente;
+
+      if (_imagemSelecionada != null) {
+        novaUrlAvatar = await _supabaseService.atualizarFotoPerfil(
+          _imagemSelecionada!,
+        );
+      }
+
       final auth = Supabase.instance.client.auth;
       final userAntes = auth.currentUser;
       final emailNovo = email.text.trim();
+
+      final Map<String, dynamic> userMetadata = {'name': nome.text.trim()};
+      if (novaUrlAvatar != null) {
+        userMetadata['avatar_url'] = novaUrlAvatar;
+      }
 
       // 1. Faz a atualização
       await auth.updateUser(
         UserAttributes(
           email: emailNovo,
           password: senha.text.isNotEmpty ? senha.text : null,
-          data: {'name': nome.text.trim()},
+          data: userMetadata,
         ),
         emailRedirectTo: 'io.supabase.flutter://login-callback',
       );
@@ -367,6 +400,89 @@ class _EditarScreenState extends State<EditarScreen> {
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
+                Center(
+                  child: GestureDetector(
+                    onTap: () {
+                      // Verifica se existe alguma imagem sendo exibida (local ou do Supabase)
+                      final temImagemLocal = _imagemSelecionada != null;
+                      final temImagemRemota =
+                          _urlImagemExistente != null &&
+                          _urlImagemExistente!.isNotEmpty;
+
+                      if (temImagemLocal || temImagemRemota) {
+                        // Se houver qualquer imagem, o clique limpa ambas para voltar ao padrão
+                        setState(() {
+                          _imagemSelecionada = null;
+                          _urlImagemExistente = null;
+                        });
+                      } else {
+                        // Se estiver no avatar padrão, abre o seletor de fotos
+                        _selecionarImagem();
+                      }
+                    },
+                    child: Stack(
+                      children: [
+                        // Avatar Principal
+                        CircleAvatar(
+                          radius: 60, // Tamanho do avatar
+                          backgroundColor: Colors
+                              .grey
+                              .shade200, // Fundo neutro enquanto carrega
+                          backgroundImage: _imagemSelecionada != null
+                              ? FileImage(
+                                  _imagemSelecionada!,
+                                ) // 1º Prioridade: Imagem nova
+                              : (_urlImagemExistente != null &&
+                                    _urlImagemExistente!.isNotEmpty)
+                              ? NetworkImage(
+                                  _urlImagemExistente!,
+                                ) // 2º Prioridade: Imagem do Supabase
+                              : null, // Sem imagem: usa o child abaixo
+                          child:
+                              (_imagemSelecionada == null &&
+                                  (_urlImagemExistente == null ||
+                                      _urlImagemExistente!.isEmpty))
+                              ? ClipOval(
+                                  child: Image.asset(
+                                    'assets/images/avatar.webp',
+                                    width: 120,
+                                    height: 120,
+                                    fit: BoxFit.cover,
+                                  ),
+                                )
+                              : null, // Se houver imagem ativa, o child some
+                        ),
+                        // Botão do Canto (Dinâmico)
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: CircleAvatar(
+                            // Se tiver imagem ativa, o botão fica vermelho indicando a remoção
+                            backgroundColor:
+                                (_imagemSelecionada != null ||
+                                    (_urlImagemExistente != null &&
+                                        _urlImagemExistente!.isNotEmpty))
+                                ? Colors.red
+                                : Theme.of(context).primaryColor,
+                            radius: 20,
+                            child: Icon(
+                              // Muda o ícone dinamicamente para o "X" ou para a Câmera
+                              (_imagemSelecionada != null ||
+                                      (_urlImagemExistente != null &&
+                                          _urlImagemExistente!.isNotEmpty))
+                                  ? Icons.close
+                                  : Icons.add_a_photo,
+                              size: 20,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 20),
                 TextField(
                   controller: nome,
                   decoration: const InputDecoration(labelText: "Nome"),

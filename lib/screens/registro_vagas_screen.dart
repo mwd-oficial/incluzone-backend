@@ -496,7 +496,6 @@ class _RegistroVagasScreenState extends State<RegistroVagasScreen> {
                     "Endereço Identificado:",
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: Colors.grey,
                     ),
                   ),
                   const SizedBox(height: 8),

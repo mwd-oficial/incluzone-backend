@@ -58,6 +58,8 @@ CREATE OR REPLACE VIEW locais_com_vagas AS
 SELECT
   l.id,
   l.id_usuario_criador, 
+  (u_criador.raw_user_meta_data->>'name') AS criador_nome,
+  (u_criador.raw_user_meta_data->>'avatar_url') AS criador_avatar,
   l.latitude,
   l.longitude,
   l.logradouro,
@@ -66,20 +68,31 @@ SELECT
   l.cidade,
   l.estado,
   l.referencia,
-  l.data_criacao,      
-  json_agg(
-    json_build_object(
-      'id_vaga', v.id,
-      'tipo_vaga', v.tipo_vaga,
-      'quantidade', v.quantidade,
-      'foto_url', v.foto_url,
-      'editado_por', v.id_usuario_ultima_foto,
-      'data_foto', v.data_ultima_foto
-    )
-  ) AS vagas
+  l.data_criacao,     
+  -- Agrupamento das Vagas
+  json_agg(DISTINCT jsonb_build_object(
+    'id_vaga', v.id,
+    'tipo_vaga', v.tipo_vaga,
+    'quantidade', v.quantidade,
+    'foto_url', v.foto_url,
+    'editado_por', v.id_usuario_ultima_alteracao,
+    'data_foto', v.data_ultima_alteracao
+  )) FILTER (WHERE v.id IS NOT NULL) AS vagas,
+  -- NOVO: Agrupamento dos Contribuintes
+  COALESCE(
+    json_agg(DISTINCT jsonb_build_object(
+      'id', c.id_usuario,
+      'nome', (u_contrib.raw_user_meta_data->>'name'),
+      'avatar', (u_contrib.raw_user_meta_data->>'avatar_url')
+    )) FILTER (WHERE c.id_usuario IS NOT NULL), 
+    '[]'
+  ) AS contribuintes
 FROM locais l
 LEFT JOIN vagas v ON v.id_local = l.id
-GROUP BY l.id;
+LEFT JOIN auth.users u_criador ON l.id_usuario_criador = u_criador.id
+LEFT JOIN contribuicoes c ON c.id_local = l.id
+LEFT JOIN auth.users u_contrib ON c.id_usuario = u_contrib.id
+GROUP BY l.id, u_criador.raw_user_meta_data;
 
 GRANT SELECT ON TABLE locais_com_vagas TO anon, authenticated;
 

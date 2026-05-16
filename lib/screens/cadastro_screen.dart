@@ -6,6 +6,7 @@ import 'dart:async';
 import 'dart:io';
 import '../main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:image_picker/image_picker.dart';
 
 class CadastroScreen extends StatefulWidget {
   const CadastroScreen({super.key});
@@ -25,6 +26,8 @@ class _CadastroScreenState extends State<CadastroScreen> {
   bool _emailEnviado = false;
   String _ultimoEmailTentado = ""; // Para comparar se o e-mail mudou
   bool _carregando = false;
+  File? _imagemSelecionada;
+  final ImagePicker _picker = ImagePicker();
 
   bool _navegou = false;
   late final StreamSubscription authSub;
@@ -44,7 +47,19 @@ class _CadastroScreenState extends State<CadastroScreen> {
       if (session != null && !_navegou) {
         _navegou = true;
 
+        // Se o usuário veio pelo Google, atualiza o nome padrão do Google
         await service.garantirPerfilGoogle();
+
+        // NOVIDADE: Se o usuário selecionou uma foto no formulário de cadastro,
+        // fazemos o upload dela agora que ele está autenticado com sucesso.
+        if (_imagemSelecionada != null) {
+          try {
+            await service.uploadFotoPerfil(_imagemSelecionada!);
+          } catch (e) {
+            // Se falhar o upload da foto, ainda assim deixa o usuário entrar
+            print("Erro ao subir foto no pós-cadastro: $e");
+          }
+        }
 
         if (mounted) {
           Navigator.pushReplacementNamed(context, '/');
@@ -87,6 +102,19 @@ class _CadastroScreenState extends State<CadastroScreen> {
     setState(() {
       _nivelZoom = prefs.getInt('nivel_zoom') ?? 0;
     });
+  }
+
+  Future<void> _selecionarImagem() async {
+    final XFile? imagem = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 70, // Compacta um pouco para não pesar no Supabase
+    );
+
+    if (imagem != null) {
+      setState(() {
+        _imagemSelecionada = File(imagem.path);
+      });
+    }
   }
 
   void _iniciarTimer() {
@@ -293,37 +321,68 @@ class _CadastroScreenState extends State<CadastroScreen> {
             padding: EdgeInsets.all(16),
             child: Column(
               children: [
-                // BOTÃO GOOGLE (AGORA NO TOPO)
-                ElevatedButton.icon(
-                  icon: Image.asset(
-                    'assets/images/google_logo.webp',
-                    width: 24,
-                    height: 24,
+                const SizedBox(height: 10),
+
+                // --- COMPONENTE DO AVATAR COM ÍCONE DE CÂMERA ---
+                Center(
+                  child: GestureDetector(
+                    // Agora o clique em QUALQUER lugar do componente segue a mesma regra
+                    onTap: () {
+                      if (_imagemSelecionada != null) {
+                        // Se já tem imagem, o clique (na foto ou no X) remove e volta ao início
+                        setState(() {
+                          _imagemSelecionada = null;
+                        });
+                      } else {
+                        // Se não tem imagem, abre o seletor
+                        _selecionarImagem();
+                      }
+                    },
+                    child: Stack(
+                      children: [
+                        // Avatar Principal
+                        CircleAvatar(
+                          radius: 60, // Tamanho do avatar
+                          backgroundImage: _imagemSelecionada != null
+                              ? FileImage(_imagemSelecionada!)
+                              : null,
+                          child: _imagemSelecionada == null
+                              ? ClipOval(
+                                  child: Image.asset(
+                                    'assets/images/avatar.webp',
+                                    width: 120,
+                                    height: 120,
+                                    fit: BoxFit.cover,
+                                  ),
+                                )
+                              : null,
+                        ),
+                        // Botão indicador no canto (Apenas visual ou clique redundante)
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: CircleAvatar(
+                            backgroundColor: _imagemSelecionada != null
+                                ? Colors
+                                      .red // Fica vermelho quando tem o "X" para indicar remoção
+                                : Theme.of(context).primaryColor,
+                            radius: 20,
+                            child: Icon(
+                              _imagemSelecionada != null
+                                  ? Icons
+                                        .close // Ícone de "X"
+                                  : Icons.add_a_photo, // Ícone de câmera
+                              size: 20,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  label: const Text("Continuar com Google"),
-                  onPressed: () async {
-                    await Supabase.instance.client.auth.signInWithOAuth(
-                      OAuthProvider.google,
-                      redirectTo: 'io.supabase.flutter://login-callback',
-                    );
-                  },
                 ),
 
-                // TEXTO "OU" CENTRALIZADO
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Row(
-                    children: const [
-                      Expanded(child: Divider()),
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8),
-                        child: Text("ou", style: TextStyle(color: Colors.grey)),
-                      ),
-                      Expanded(child: Divider()),
-                    ],
-                  ),
-                ),
-
+                const SizedBox(height: 20),
                 TextField(
                   controller: nome,
                   decoration: InputDecoration(labelText: "Nome"),
@@ -399,6 +458,37 @@ class _CadastroScreenState extends State<CadastroScreen> {
                       ],
                     ),
                   ),
+                ),
+
+                // TEXTO "OU" CENTRALIZADO
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Row(
+                    children: const [
+                      Expanded(child: Divider()),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8),
+                        child: Text("ou", style: TextStyle(color: Colors.grey)),
+                      ),
+                      Expanded(child: Divider()),
+                    ],
+                  ),
+                ),
+
+                // BOTÃO GOOGLE (AGORA NO TOPO)
+                ElevatedButton.icon(
+                  icon: Image.asset(
+                    'assets/images/google_logo.webp',
+                    width: 24,
+                    height: 24,
+                  ),
+                  label: const Text("Continuar com Google"),
+                  onPressed: () async {
+                    await Supabase.instance.client.auth.signInWithOAuth(
+                      OAuthProvider.google,
+                      redirectTo: 'io.supabase.flutter://login-callback',
+                    );
+                  },
                 ),
               ],
             ),

@@ -128,12 +128,6 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
     );
   }
 
-  Future<void> _editarRegistro(dynamic item) async {
-    await Navigator.pushNamed(context, '/registro_vagas', arguments: item);
-    // Recarrega os dados caso o usuário tenha alterado algo
-    _buscarHistorico();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(

@@ -1,55 +1,40 @@
 import 'dart:io';
 import 'dart:convert';
-import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class GeminiService {
-  static const String _apiKey = "";
+  // A API Key sumiu daqui! A segurança agradece.
 
   static Future<Map<String, dynamic>> validarVaga(
     File imagem,
     String tipoEsperado,
   ) async {
     try {
-      final model = GenerativeModel(model: 'gemini-3-flash-preview', apiKey: _apiKey);
-
-      // Lê a imagem como bytes
+      // 1. Lê a imagem e converte para String Base64
       final imageBytes = await imagem.readAsBytes();
+      final imagemBase64 = base64Encode(imageBytes);
 
-      final prompt = [
-        Content.multi([
-          TextPart('''
-Analise a imagem da vaga de estacionamento.
-Tipo esperado pelo usuário: $tipoEsperado.
+      // 2. Invoca a Edge Function do Supabase
+      final response = await Supabase.instance.client.functions.invoke(
+        'validar-vaga',
+        body: {
+          'imagemBase64': imagemBase64,
+          'tipoEsperado': tipoEsperado,
+        },
+      );
 
-Retorne APENAS um JSON:
-{
-  "status": boolean,
-  "message": "OK" | "NOT_A_PARKING_SPOT" | "WRONG_TYPE" | "NO_SIGNALIZATION" | "POOR_QUALITY" | "OBSTRUCTED"
-}
-
-Regras de Decisão:
-1. Se a imagem não for de um estacionamento ou rua: "NOT_A_PARKING_SPOT".
-2. Se a sinalização (vertical ou horizontal) estiver visível e for diferente de "$tipoEsperado": "WRONG_TYPE".
-3. Se houver um veículo ou objeto cobrindo a pintura/placa, impedindo a validação: "OBSTRUCTED".
-4. Se a área for claramente uma vaga, mas não houver nenhuma pintura ou placa indicando categoria especial: "NO_SIGNALIZATION".
-5. Se a imagem estiver muito escura, borrada ou longe demais: "POOR_QUALITY".
-6. "status" será true APENAS se a sinalização confirmar categoricamente o "$tipoEsperado".
-
-Retorne apenas o JSON, sem explicações.
-'''),
-          DataPart('image/webp', imageBytes),
-        ]),
-      ];
-
-      final response = await model.generateContent(prompt);
-
-      // Limpa a resposta (remove ```json e espaços)
-      String textoLimpo = response.text!
-          .replaceAll('```json', '')
-          .replaceAll('```', '')
-          .trim();
-      return jsonDecode(textoLimpo);
+      // 3. A resposta já vem como um Map pronto se for um JSON válido
+      if (response.data is Map) {
+        return Map<String, dynamic>.from(response.data);
+      } else {
+        // Caso venha como String, decodifica
+        return jsonDecode(response.data.toString());
+      }
+    } on FunctionException catch (fe) {
+      // Erros vindos especificamente da Edge Function
+      return {"status": false, "message": "ERRO_FUNCAO", "detalhe": fe};
     } catch (e) {
+      // Erros genéricos de rede/conexão
       return {"status": false, "message": "ERRO_CONEXAO"};
     }
   }

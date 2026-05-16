@@ -582,6 +582,22 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
+  void _mostrarDialogoEditarVaga(String titulo, String mensagem) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(titulo),
+        content: Text(mensagem),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("OK"),
+          ),
+        ],
+      ),
+    );
+  }
+
   final GoogleSignIn _googleSignIn = GoogleSignIn();
 
   Future<void> _excluirConta() async {
@@ -1063,8 +1079,148 @@ class _HomeScreenState extends State<HomeScreen>
                                 ),
                               ),
                             ),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.edit_outlined,
+                                color: Colors.blueAccent,
+                              ),
+                              onPressed: () async {
+                                if (!(await _temInternet())) {
+                                  if (mounted) {
+                                    _mostrarDialogoEditarVaga(
+                                      "Sem Conexão",
+                                      "Parece que você está offline. Verifique sua conexão com a internet e tente novamente.",
+                                    );
+                                  }
+                                  return; // Interrompe a execução aqui
+                                }
+
+                                if (service.estaLogado) {
+                                  // Aguarda o usuário terminar o registro na outra tela
+                                  await Navigator.pushNamed(
+                                    context,
+                                    '/registro_vagas',
+                                    arguments: local,
+                                  );
+                                } else {
+                                  Navigator.pushNamed(context, '/login');
+                                }
+                              },
+                            ),
                           ],
                         ),
+
+                        const SizedBox(height: 12),
+
+                        // --- SEÇÃO DE CONTRIBUINTES ---
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              "Contribuintes deste local",
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black54,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Builder(
+                              builder: (context) {
+                                final List<dynamic> contribuintes =
+                                    local['contribuintes'] ?? [];
+
+                                if (contribuintes.isEmpty) {
+                                  return Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey.shade100,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      "Nenhuma contribuição registrada ainda.",
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.grey.shade600,
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    ),
+                                  );
+                                }
+
+                                // Gera a lista vertical de usuários usando uma Column
+                                return Column(
+                                  children: contribuintes.map<Widget>((
+                                    contrib,
+                                  ) {
+                                    final String? avatarUrl = contrib['avatar'];
+                                    final String nome =
+                                        contrib['nome'] ?? "Usuário Anônimo";
+
+                                    return Container(
+                                      margin: const EdgeInsets.only(
+                                        bottom: 8,
+                                      ), // Espaçamento entre usuários
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 8,
+                                        horizontal: 12,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey.shade100,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          CircleAvatar(
+                                            radius: 18,
+                                            backgroundColor:
+                                                Colors.grey.shade300,
+                                            backgroundImage:
+                                                (avatarUrl != null &&
+                                                    avatarUrl.isNotEmpty)
+                                                ? NetworkImage(avatarUrl)
+                                                : null,
+                                            child:
+                                                (avatarUrl == null ||
+                                                    avatarUrl.isEmpty)
+                                                ? ClipRRect(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          18,
+                                                        ),
+                                                    child: Image.asset(
+                                                      'assets/images/avatar.webp',
+                                                      fit: BoxFit.cover,
+                                                      width: double.infinity,
+                                                      height: double.infinity,
+                                                    ),
+                                                  )
+                                                : null,
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Text(
+                                              nome,
+                                              style: const TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w600,
+                                                color: Colors.black87,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  }).toList(),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+
                         const SizedBox(height: 20),
 
                         // Endereço
@@ -1081,10 +1237,7 @@ class _HomeScreenState extends State<HomeScreen>
                         ),
                         Text(
                           "Referência: ${local['referencia'] != null && local['referencia'].isNotEmpty ? local['referencia'] : 'Não registrada'}",
-                          style: const TextStyle(
-                            color: Colors.grey,
-                            fontSize: 13,
-                          ),
+                          style: const TextStyle(fontSize: 12),
                         ),
 
                         const Divider(height: 32),
